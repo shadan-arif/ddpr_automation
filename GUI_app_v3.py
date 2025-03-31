@@ -150,6 +150,9 @@ def type_operations(operations, start_y):
                 pyautogui.typewrite(str(element))  # Type normally for other elements
                 time.sleep(0.02)
 
+                if i>3:
+                    first_row = True
+
                 if i == 1:
                     x += x_increment   
                 else:
