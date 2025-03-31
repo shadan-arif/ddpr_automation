@@ -1,4 +1,4 @@
-# This version has updated version (fixed all bugs) to carry out only typing. No editing possible. 
+# This version has a pop-up to modify the feilds in a seperate window
 import customtkinter as ctk
 import threading
 import time
@@ -151,9 +151,6 @@ def type_operations(operations, start_y):
                 pyautogui.typewrite(str(element))  # Type normally for other elements
                 time.sleep(0.02)
 
-                if i>3:
-                    first_row = True
-
                 if i == 1:
                     x += x_increment   
                 else:
@@ -247,81 +244,10 @@ def change_pdf(pdf_name):
         shutil.copy(file_path, f"src/{pdf_name}")
         show_status_message(f"{pdf_name} has been replaced.")
 
-# --------- NEW FUNCTIONS FOR SELECTION PREVIEW AND MODIFICATION ---------
+# --------- UPDATED FUNCTIONS FOR SELECTION PREVIEW AND MODIFICATION ---------
 
 # Global variable to store extracted data
 extracted_data = {}
-
-# Function to show extracted data and allow modifications
-def show_and_modify_selection():
-    message = input_text.get("1.0", "end-1c")
-    
-    if not message.strip():
-        status_label.configure(text="Error: Please enter valid input", text_color="red")
-        return
-    
-    # Extract data first without executing the rest of the code
-    global extracted_data
-    extracted_data = extract_data(message)
-    
-    # Create selection preview window
-    preview_window = ctk.CTkToplevel(app)
-    preview_window.title("Preview Extracted Data")
-    preview_window.geometry("800x600")
-    
-    # Create a scrollable frame for content
-    scroll_frame = ctk.CTkScrollableFrame(preview_window, width=750, height=500)
-    scroll_frame.pack(pady=20, padx=20, fill="both", expand=True)
-    
-    # Title
-    title_label = ctk.CTkLabel(scroll_frame, text="Review and Modify Extracted Data", 
-                              font=("Arial", 18, "bold"))
-    title_label.pack(pady=10)
-    
-    # Add fields for each type of extracted data
-    add_editable_field(scroll_frame, "Date", extracted_data.get('Date', ''), 'purple')
-    add_editable_field(scroll_frame, "Present Depth", extracted_data.get('Present Depth', ''), 'blue')
-    add_editable_field(scroll_frame, "HSD Stock", extracted_data.get('HSD Stock', ''), 'teal')
-    
-    # Display remarks
-    if extracted_data.get('Remarks'):
-        remarks_frame = create_section_frame(scroll_frame, "Remarks", 'indigo')
-        remarks_text = ctk.CTkTextbox(remarks_frame, height=100, width=700)
-        remarks_text.pack(pady=5, fill="both", expand=True)
-        remarks_text.insert("1.0", "\n".join(extracted_data.get('Remarks', [])))
-        
-        def save_remarks():
-            new_remarks = remarks_text.get("1.0", "end-1c")
-            extracted_data['Remarks'] = new_remarks.split('\n')
-            show_popup("Remarks updated!", 1500)
-        
-        save_btn = ctk.CTkButton(remarks_frame, text="Save Changes", 
-                               command=save_remarks, fg_color="indigo")
-        save_btn.pack(pady=5)
-    
-    # Display Day Operations
-    if extracted_data.get('Day Operations'):
-        operations_frame = create_section_frame(scroll_frame, "Day Operations", 'navy')
-        display_operations(operations_frame, extracted_data.get('Day Operations', []), 'Day Operations')
-    
-    # Display Night Operations
-    if extracted_data.get('Night Operations'):
-        operations_frame = create_section_frame(scroll_frame, "Night Operations", 'purple4')
-        display_operations(operations_frame, extracted_data.get('Night Operations', []), 'Night Operations')
-    
-    # Buttons for actions
-    button_frame = ctk.CTkFrame(preview_window)
-    button_frame.pack(pady=10, fill="x")
-    
-    save_btn = ctk.CTkButton(button_frame, text="Save All Changes", 
-                          command=lambda: save_all_changes(preview_window),
-                          fg_color="forest green", hover_color="green4")
-    save_btn.pack(side="left", padx=20, pady=10)
-    
-    cancel_btn = ctk.CTkButton(button_frame, text="Cancel", 
-                             command=preview_window.destroy,
-                             fg_color="firebrick", hover_color="dark red")
-    cancel_btn.pack(side="right", padx=20, pady=10)
 
 # Helper function to create a section frame
 def create_section_frame(parent, title, color):
@@ -337,7 +263,7 @@ def create_section_frame(parent, title, color):
     
     return section_frame
 
-# Helper function to add editable field
+# Helper function to add editable field with its own save button
 def add_editable_field(parent, field_name, value, color):
     field_frame = ctk.CTkFrame(parent)
     field_frame.pack(pady=5, fill="x")
@@ -361,7 +287,20 @@ def add_editable_field(parent, field_name, value, color):
     extend_btn.pack(side="left", padx=5)
     extend_btn.is_extended = False
     
+    # Add save button for this field
+    save_field_btn = ctk.CTkButton(field_frame, text="Save", width=60,
+                                 command=lambda: save_single_field(entry, field_name),
+                                 fg_color=color, hover_color="gray30")
+    save_field_btn.pack(side="left", padx=5)
+    
     return entry
+
+# Function to save a single field
+def save_single_field(entry_widget, field_name):
+    global extracted_data
+    new_value = entry_widget.get()
+    extracted_data[field_name] = new_value
+    show_popup(f"{field_name} updated!", 1500)
 
 # Helper function to toggle extension of an entry field
 def toggle_extension(entry_widget, button):
@@ -372,68 +311,153 @@ def toggle_extension(entry_widget, button):
         entry_widget.configure(width=500)
         button.is_extended = True
 
-# Helper function to display operations
+# Helper function to create an empty operation row
+def create_empty_operation_row():
+    return ["00:00", "00:00", "0", ""]
+
+# Helper function to display operations with add/delete row functionality
 def display_operations(parent, operations, operations_key):
-    if not operations:
-        empty_label = ctk.CTkLabel(parent, text="No operations found")
-        empty_label.pack(pady=5)
-        return
+    # Create a frame to hold the table and buttons
+    container_frame = ctk.CTkFrame(parent)
+    container_frame.pack(pady=5, fill="both", expand=True)
     
-    table_frame = ctk.CTkFrame(parent)
+    # Create scrollable frame for the table
+    table_scroll = ctk.CTkScrollableFrame(container_frame, height=200)
+    table_scroll.pack(pady=5, fill="both", expand=True)
+    
+    if not operations:
+        operations = [create_empty_operation_row()]
+    
+    table_frame = ctk.CTkFrame(table_scroll)
     table_frame.pack(pady=5, fill="both", expand=True)
     
     # Headers
-    headers = ["Start Time", "End Time", "Duration", "Description"]
+    headers = ["Start Time", "End Time", "Duration", "Description", "Actions"]
     for i, header in enumerate(headers):
         header_label = ctk.CTkLabel(table_frame, text=header, font=("Arial", 12, "bold"),
                                   fg_color="gray30", corner_radius=2, text_color="white")
         header_label.grid(row=0, column=i, padx=5, pady=5, sticky="ew")
     
-    # Operations
-    for i, operation in enumerate(operations):
-        row_entries = []
-        for j, value in enumerate(operation[:3]):  # First three columns (start, end, duration)
-            entry = ctk.CTkEntry(table_frame, width=80 if j < 2 else 60)
-            entry.grid(row=i+1, column=j, padx=2, pady=2, sticky="ew")
-            entry.insert(0, value)
-            row_entries.append(entry)
-        
-        # Description field can be longer and might need extension
-        desc_entry = ctk.CTkEntry(table_frame, width=300)
-        desc_entry.grid(row=i+1, column=3, padx=2, pady=2, sticky="ew")
-        desc_entry.insert(0, operation[3] if len(operation) > 3 else "")
-        row_entries.append(desc_entry)
-        
-        # Extension button for description
-        extend_btn = ctk.CTkButton(table_frame, text="↔", width=20, 
-                                 command=lambda e=desc_entry, b=None: toggle_extension(e, extend_btn))
-        extend_btn.grid(row=i+1, column=4, padx=2, pady=2)
-        extend_btn.is_extended = False
-        
-        # Save the reference to these entries for the current operation row
-        for entry in row_entries:
-            entry.operation_index = i
-            entry.operations_key = operations_key
+    # Function to add a new row
+    def add_row_after(index):
+        nonlocal operations
+        operations.insert(index + 1, create_empty_operation_row())
+        # Refresh the entire table
+        for widget in table_frame.winfo_children():
+            widget.destroy()
+        # Re-add headers
+        for i, header in enumerate(headers):
+            header_label = ctk.CTkLabel(table_frame, text=header, font=("Arial", 12, "bold"),
+                                      fg_color="gray30", corner_radius=2, text_color="white")
+            header_label.grid(row=0, column=i, padx=5, pady=5, sticky="ew")
+        # Re-populate with updated operations
+        populate_operations(operations)
+    
+    # Function to delete a row
+    def delete_row(index):
+        nonlocal operations
+        if len(operations) > 1:  # Keep at least one row
+            del operations[index]
+            # Refresh the entire table
+            for widget in table_frame.winfo_children():
+                widget.destroy()
+            # Re-add headers
+            for i, header in enumerate(headers):
+                header_label = ctk.CTkLabel(table_frame, text=header, font=("Arial", 12, "bold"),
+                                          fg_color="gray30", corner_radius=2, text_color="white")
+                header_label.grid(row=0, column=i, padx=5, pady=5, sticky="ew")
+            # Re-populate with updated operations
+            populate_operations(operations)
+        else:
+            show_popup("Cannot delete the last row", 1500)
+    
+    # Function to populate operation rows
+    def populate_operations(ops):
+        for i, operation in enumerate(ops):
+            row_entries = []
+            for j, value in enumerate(operation[:3]):  # First three columns (start, end, duration)
+                entry = ctk.CTkEntry(table_frame, width=80 if j < 2 else 60)
+                entry.grid(row=i+1, column=j, padx=2, pady=2, sticky="ew")
+                entry.insert(0, value)
+                row_entries.append(entry)
+            
+            # Description field can be longer and might need extension
+            desc_entry = ctk.CTkEntry(table_frame, width=300)
+            desc_entry.grid(row=i+1, column=3, padx=2, pady=2, sticky="ew")
+            desc_entry.insert(0, operation[3] if len(operation) > 3 else "")
+            row_entries.append(desc_entry)
+            
+            # Action buttons frame (+ and - buttons)
+            action_frame = ctk.CTkFrame(table_frame)
+            action_frame.grid(row=i+1, column=4, padx=2, pady=2)
+            
+            # Add row button
+            add_btn = ctk.CTkButton(action_frame, text="+", width=30, 
+                                  command=lambda idx=i: add_row_after(idx),
+                                  fg_color="forest green", hover_color="green4")
+            add_btn.pack(side="left", padx=2)
+            
+            # Delete row button
+            del_btn = ctk.CTkButton(action_frame, text="-", width=30, 
+                                  command=lambda idx=i: delete_row(idx),
+                                  fg_color="firebrick", hover_color="dark red")
+            del_btn.pack(side="left", padx=2)
+            
+            # Extension button for description
+            extend_btn = ctk.CTkButton(action_frame, text="↔", width=30, 
+                                     command=lambda e=desc_entry: toggle_extension(e, extend_btn))
+            extend_btn.pack(side="left", padx=2)
+            extend_btn.is_extended = False
+            
+            # Save the reference to these entries for the current operation row
+            for entry in row_entries:
+                entry.operation_index = i
+                entry.operations_key = operations_key
+    
+    # Initially populate the table
+    populate_operations(operations)
     
     # Save changes button for this operation set
-    save_ops_btn = ctk.CTkButton(parent, text=f"Save {operations_key}", 
-                              command=lambda: save_operations(table_frame, operations_key))
+    save_ops_btn = ctk.CTkButton(container_frame, text=f"Save {operations_key}", 
+                              command=lambda: save_operations(table_frame, operations, operations_key))
     save_ops_btn.pack(pady=5)
+    
+    # Store the reference to operations for updates
+    parent.operations = operations
+    parent.operations_key = operations_key
+    parent.table_frame = table_frame
 
 # Function to save changes to operations
-def save_operations(table_frame, operations_key):
+def save_operations(table_frame, operations, operations_key):
     new_operations = []
     
-    # Find all entry widgets in the table
-    entries = [widget for widget in table_frame.winfo_children() if isinstance(widget, ctk.CTkEntry)]
+    # Get all entry widgets excluding headers (which are labels)
+    all_widgets = table_frame.winfo_children()
+    entry_rows = {}
     
-    # Group entries by operation (every 4 entries form one operation)
-    for i in range(0, len(entries), 4):
-        if i+3 < len(entries):  # Ensure we have all fields
-            start_time = entries[i].get()
-            end_time = entries[i+1].get()
-            duration = entries[i+2].get()
-            description = entries[i+3].get()
+    for widget in all_widgets:
+        if isinstance(widget, ctk.CTkEntry):
+            # Get widget's grid info
+            info = widget.grid_info()
+            row = int(info['row'])
+            col = int(info['column'])
+            
+            if row not in entry_rows:
+                entry_rows[row] = {}
+            
+            entry_rows[row][col] = widget.get()
+    
+    # Sort rows and create operation entries
+    for row in sorted(entry_rows.keys()):
+        if row == 0:  # Skip header row
+            continue
+            
+        row_data = entry_rows[row]
+        if len(row_data) >= 4:  # Ensure we have all needed columns
+            start_time = row_data.get(0, "00:00")
+            end_time = row_data.get(1, "00:00")
+            duration = row_data.get(2, "0")
+            description = row_data.get(3, "")
             
             # Split description if needed
             split_desc = [description[j:j+65] for j in range(0, len(description), 65)]
@@ -447,20 +471,98 @@ def save_operations(table_frame, operations_key):
     
     show_popup(f"{operations_key} updated!", 1500)
 
-# Function to save all changes from the preview window
-def save_all_changes(preview_window):
-    # Collect all single-field entries
-    entries = [widget for widget in preview_window.winfo_children()[0].winfo_children() 
-               if isinstance(widget, ctk.CTkFrame)]
+# Function to show extracted data and allow modifications with a scrollable preview window
+def show_and_modify_selection():
+    message = input_text.get("1.0", "end-1c")
     
-    # Update basic fields (Date, Present Depth, HSD Stock)
-    for frame in entries:
-        for widget in frame.winfo_children():
-            if isinstance(widget, ctk.CTkEntry) and hasattr(widget, 'field_name'):
-                field_name = widget.field_name
-                new_value = widget.get()
-                global extracted_data
-                extracted_data[field_name] = new_value
+    if not message.strip():
+        status_label.configure(text="Error: Please enter valid input", text_color="red")
+        return
+    
+    # Extract data first without executing the rest of the code
+    global extracted_data
+    extracted_data = extract_data(message)
+    
+    # Create selection preview window
+    preview_window = ctk.CTkToplevel(app)
+    preview_window.title("Preview Extracted Data")
+    preview_window.geometry("800x800")
+    
+    # Create a scrollable frame for content
+    scroll_frame = ctk.CTkScrollableFrame(preview_window, width=750, height=700)
+    scroll_frame.pack(pady=20, padx=20, fill="both", expand=True)
+    
+    # Title
+    title_label = ctk.CTkLabel(scroll_frame, text="Review and Modify Extracted Data", 
+                              font=("Arial", 18, "bold"))
+    title_label.pack(pady=10)
+    
+    # Add fields for each type of extracted data with individual save buttons
+    add_editable_field(scroll_frame, "Date", extracted_data.get('Date', ''), 'purple')
+    add_editable_field(scroll_frame, "Present Depth", extracted_data.get('Present Depth', ''), 'blue')
+    add_editable_field(scroll_frame, "HSD Stock", extracted_data.get('HSD Stock', ''), 'teal')
+    
+    # Display remarks
+    if 'Remarks' in extracted_data or True:  # Always show remarks section even if empty
+        remarks_frame = create_section_frame(scroll_frame, "Remarks", 'indigo')
+        remarks_text = ctk.CTkTextbox(remarks_frame, height=100, width=700)
+        remarks_text.pack(pady=5, fill="both", expand=True)
+        if extracted_data.get('Remarks'):
+            remarks_text.insert("1.0", "\n".join(extracted_data.get('Remarks', [])))
+        
+        def save_remarks():
+            new_remarks = remarks_text.get("1.0", "end-1c")
+            extracted_data['Remarks'] = new_remarks.split('\n')
+            show_popup("Remarks updated!", 1500)
+        
+        save_btn = ctk.CTkButton(remarks_frame, text="Save Changes", 
+                               command=save_remarks, fg_color="indigo")
+        save_btn.pack(pady=5)
+    
+    # Display Day Operations
+    day_operations_frame = create_section_frame(scroll_frame, "Day Operations", 'navy')
+    display_operations(day_operations_frame, extracted_data.get('Day Operations', []), 'Day Operations')
+    
+    # Display Night Operations
+    night_operations_frame = create_section_frame(scroll_frame, "Night Operations", 'purple4')
+    display_operations(night_operations_frame, extracted_data.get('Night Operations', []), 'Night Operations')
+    
+    # Buttons for actions
+    button_frame = ctk.CTkFrame(preview_window)
+    button_frame.pack(pady=10, fill="x")
+    
+    save_btn = ctk.CTkButton(button_frame, text="Save All Changes", 
+                          command=lambda: save_all_changes(preview_window, scroll_frame),
+                          fg_color="forest green", hover_color="green4")
+    save_btn.pack(side="left", padx=20, pady=10)
+    
+    cancel_btn = ctk.CTkButton(button_frame, text="Cancel", 
+                             command=preview_window.destroy,
+                             fg_color="firebrick", hover_color="dark red")
+    cancel_btn.pack(side="right", padx=20, pady=10)
+
+# Function to save all changes from the preview window
+def save_all_changes(preview_window, scroll_frame):
+    global extracted_data
+    
+    # Collect all field entries and update their values
+    for widget in scroll_frame.winfo_children():
+        if isinstance(widget, ctk.CTkFrame):
+            for child in widget.winfo_children():
+                # For single field entries
+                if isinstance(child, ctk.CTkEntry) and hasattr(child, 'field_name'):
+                    field_name = child.field_name
+                    new_value = child.get()
+                    extracted_data[field_name] = new_value
+                
+                # Look for operations tables
+                if hasattr(widget, 'operations') and hasattr(widget, 'operations_key') and hasattr(widget, 'table_frame'):
+                    save_operations(widget.table_frame, widget.operations, widget.operations_key)
+                
+                # Look for remarks textbox
+                if isinstance(child, ctk.CTkTextbox) and widget.winfo_children()[0].cget("text") == "Remarks":
+                    new_remarks = child.get("1.0", "end-1c")
+                    extracted_data['Remarks'] = new_remarks.split('\n')
     
     show_popup("All changes saved!", 2000)
     preview_window.destroy()
@@ -496,7 +598,8 @@ def start_execution():
 
     # Type data into PDF based on selected checkboxes
     # Execute functions based on checkbox selections
-    type_date(extracted_data['Date'])
+    if extracted_data.get('Date'):
+        type_date(extracted_data['Date'])
 
     if remarks_var.get() and extracted_data.get('Remarks'):
         type_remarks(extracted_data['Remarks'])
